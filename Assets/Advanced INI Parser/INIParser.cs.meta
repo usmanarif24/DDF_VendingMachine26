@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 11fe57842d0ce30478249f770ab1bf06
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 23706
+  packageName: Advanced INI Parser
+  packageVersion: 1.0
+  assetPath: Assets/Advanced INI Parser/INIParser.cs
+  uploadId: 38533
