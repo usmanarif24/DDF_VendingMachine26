@@ -18,14 +18,25 @@ namespace RenderHeads.Media.AVProVideo.Editor
 		public void OnPostGenerateGradleAndroidProject( string path )
 		{
 			GradleProperty( path );
+#if UNITY_6000_0_OR_NEWER
+			// AVPro bundles full Guava, which already supplies ListenableFuture. Modern AndroidX
+			// dependencies also pull in the standalone artifact, producing duplicate classes.
+			if (File.Exists("Assets/AVProVideo/Runtime/Plugins/Android/guava-31.1-android.jar"))
+			{
+				string rootGradle = Path.Combine(path, "..", "build.gradle");
+				const string marker = "// AVPro bundled Guava compatibility";
+				if (File.Exists(rootGradle) && !File.ReadAllText(rootGradle).Contains(marker))
+					File.AppendAllText(rootGradle, "\n" + marker + "\nallprojects {\n    configurations.configureEach {\n        exclude group: 'com.google.guava', module: 'listenablefuture'\n    }\n}\n");
+			}
+#endif
 		}
 
 		private void GradleProperty( string path )
 		{
 #if UNITY_2020_1_OR_NEWER || UNITY_2020_OR_NEWER
 			// When using Unity 2020.1 and above it has been seen that the build process overly optimises which causes issues in the ExoPlayer library.
-			// To overcome this issue, we need to add 'android.enableDexingArtifactTransform=false' to the gradle.properties.
-			// Note that this can be done by the developer at project level already.
+			// The legacy workaround is not supported by the Android Gradle plugin shipped with Unity 6.
+			// Always remove stale copies, and only add the workaround for older Unity versions.
 
 			Debug.Log("[AVProVideo] Post-processing Android project: patching gradle.properties");
 
@@ -52,8 +63,10 @@ namespace RenderHeads.Media.AVProVideo.Editor
 				}
 			}
 
-			// Add in line to set enableDexingArtifactTransform to false
+			// Android Gradle plugin 8.3+ removed this option; Unity 6 must use the default dexing pipeline.
+#if !UNITY_6000_0_OR_NEWER
 			stringBuilder.AppendLine( "android.enableDexingArtifactTransform=false" );
+#endif
 
 			// Write out the amended file
 			File.WriteAllText( filePath, stringBuilder.ToString() );
