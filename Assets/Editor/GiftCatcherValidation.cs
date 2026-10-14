@@ -30,6 +30,9 @@ public static class GiftCatcherValidation
         try
         {
             var game = root.GetComponent<GiftCatcherGame>();
+            // Rule checks must never actuate hardware, even when the operator enabled settings.ini.
+            typeof(GiftCatcherGame).GetField("vendingConfig", Private).SetValue(game, new VendingSettings { Enabled = false });
+            typeof(GiftCatcherGame).GetField("inventory", Private).SetValue(game, new VendingInventory(new VendingSettings { Turns = new[] { 1000, 1000, 1000, 1000 } }, null));
             Assert(game.itemPool.Length == 20 && game.giftTextures.Length == 8, "Authored artwork and pool");
             Begin(game);
             Assert(game.timeLabel.text == "1:00" && game.giftsLabel.text == "0 / 10", "Initial round HUD");

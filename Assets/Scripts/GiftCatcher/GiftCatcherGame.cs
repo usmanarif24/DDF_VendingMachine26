@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -26,6 +27,14 @@ namespace DDF.GiftCatcher
         public Texture2D rockTexture;
         public Button startButton, readyButton, homeButton, resumeButton;
         public GiftCatcherInput touchInput;
+        [Header("Vending")]
+        public TextAsset vendingDefaults;
+        public TMP_Text vendingStatusLabel;
+        VendingDispenser dispenser;
+        VendingSettings vendingConfig;
+        VendingInventory inventory;
+        string vendingError;
+        bool dispensingPending;
 
         enum State { Welcome, Instructions, Countdown, Playing, Result }
         State state;
@@ -43,7 +52,75 @@ namespace DDF.GiftCatcher
             homeButton.onClick.AddListener(ShowWelcome);
             resumeButton.onClick.AddListener(Resume);
             touchInput.game = this;
-            ShowWelcome();
+            LoadVending();
+            if (!string.IsNullOrEmpty(vendingError)) ShowVendingFault();
+            else ShowWelcome();
+        }
+
+        void ShowVendingFault()
+        {
+            state = State.Result; Screens(result);
+            bool empty = vendingError == "All trays are empty.";
+            resultTitle.text = empty ? "MACHINE EMPTY" : "MACHINE UNAVAILABLE";
+            resultBody.text = empty ? "All trays are empty.\nPlease ask a team member to refill the machine." :
+                "Please ask a team member for help.\nAn earlier dispense or configuration needs attention.";
+            returnLabel.text = "Waiting for a team member";
+            homeButton.interactable = false;
+            if (vendingStatusLabel) vendingStatusLabel.text = "Machine needs staff attention";
+            Debug.LogError("Vending needs staff attention: " + vendingError);
+        }
+
+        void LoadVending()
+        {
+            try
+            {
+                string path = Path.Combine(Application.streamingAssetsPath, "settings.ini");
+                string text = File.Exists(path) ? File.ReadAllText(path) : vendingDefaults ? vendingDefaults.text : "";
+                vendingConfig = VendingSettings.Parse(text);
+                PrepareDispenser();
+                if (dispenser.RequiresRecovery) vendingError = "An earlier motor request is unresolved. Please ask a team member for help.";
+            }
+            catch (Exception exception) { vendingError = exception.Message; Debug.LogError("Vending configuration: " + exception.Message); }
+        }
+
+        void PrepareDispenser()
+        {
+            if (inventory == null)
+                inventory = new VendingInventory(vendingConfig, Path.Combine(Application.persistentDataPath,
+                    vendingConfig.Enabled ? "vending-inventory.txt" : "vending-inventory-demo.txt"));
+            dispenser = new VendingDispenser(vendingConfig, Path.Combine(Application.persistentDataPath, "vending-pending.txt"), inventory: inventory);
+        }
+
+        public void DebugDispense()
+        {
+            if (vendingConfig == null || !vendingConfig.Debug || dispensingPending || isPaused || !string.IsNullOrEmpty(vendingError)) return;
+            StartRound();
+            if (state != State.Countdown) return;
+            Debug.Log("Debug Space dispense: motor " + inventory.NextMotor());
+            Finish(true);
+        }
+
+        void PumpVending()
+        {
+            if (dispenser == null || !dispenser.TryTakeResult(out var outcome)) return;
+            dispensingPending = false;
+            if (outcome.Kind == VendingDispenser.ResultKind.Failed || outcome.Kind == VendingDispenser.ResultKind.Empty)
+            {
+                vendingError = outcome.Detail;
+                resultBody.text = outcome.Kind == VendingDispenser.ResultKind.Empty ? "All trays are empty.\nPlease ask a team member to refill the machine." : "We could not confirm the dispense cycle.\nPlease ask a team member for help.";
+                if (vendingStatusLabel) vendingStatusLabel.text = "Machine needs staff attention";
+                Debug.LogError("Vending failed: " + outcome.Detail);
+                returnLabel.text = "Waiting for a team member";
+                homeButton.interactable = false;
+                return;
+            }
+            homeButton.interactable = true;
+            returnTime = resultSeconds;
+            resultBody.text = outcome.Kind == VendingDispenser.ResultKind.Demo ?
+                "Demo round complete.\nNo physical gift was dispensed." :
+                "Dispense cycle complete.\nPlease check the collection tray.";
+            if (vendingStatusLabel) vendingStatusLabel.text = outcome.Kind == VendingDispenser.ResultKind.Demo ? "DEMO — vending is disabled in settings.ini" : "Motor cycle acknowledged by Arduino";
+            Debug.Log("Vending result: " + outcome.Kind + " " + outcome.Detail);
         }
 
         void Screens(GameObject visible)
@@ -59,16 +136,30 @@ namespace DDF.GiftCatcher
 
         public void ShowWelcome()
         {
+            if (dispensingPending || !string.IsNullOrEmpty(vendingError)) return;
+            if (inventory != null && inventory.NextMotor() == 0)
+            { vendingError = "All trays are empty."; ShowVendingFault(); resultBody.text = "All trays are empty.\nPlease ask a team member to refill the machine."; return; }
             ClearItems(); state = State.Welcome; Screens(welcome);
         }
 
         public void ShowInstructions()
         {
+            if (dispensingPending || !string.IsNullOrEmpty(vendingError)) return;
             state = State.Instructions; idleTime = instructionIdleSeconds; Screens(instructions);
         }
 
         public void StartRound()
         {
+            if (dispensingPending || !string.IsNullOrEmpty(vendingError)) return;
+            if (dispenser != null && !dispenser.Busy)
+            {
+                dispenser.Dispose(); dispenser = null;
+            }
+            if (vendingConfig == null) LoadVending();
+            else PrepareDispenser();
+            if (dispenser != null && dispenser.RequiresRecovery) vendingError = "Unresolved vending request.";
+            if (inventory != null && inventory.NextMotor() == 0) vendingError = "All trays are empty.";
+            if (!string.IsNullOrEmpty(vendingError)) { ShowVendingFault(); return; }
             ClearItems(); gifts = 0; lives = startingLives; timeLeft = roundSeconds;
             countdown = 3; nextSpawn = .35f; feedbackTime = 0;
             bag.anchoredPosition = new Vector2(0, bag.anchoredPosition.y);
@@ -79,6 +170,8 @@ namespace DDF.GiftCatcher
 
         void Update()
         {
+            PumpVending();
+            if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame) DebugDispense();
             Tick(Time.deltaTime);
         }
 
@@ -91,6 +184,7 @@ namespace DDF.GiftCatcher
             }
             if (state == State.Result)
             {
+                if (dispensingPending || !string.IsNullOrEmpty(vendingError)) return;
                 returnTime -= dt;
                 returnLabel.text = "Returning to start in " + Mathf.CeilToInt(Mathf.Max(0, returnTime)) + " seconds";
                 if (returnTime <= 0) ShowWelcome(); return;
@@ -194,13 +288,25 @@ namespace DDF.GiftCatcher
 
         void Finish(bool won)
         {
+            if (state == State.Result) return;
             state = State.Result; ClearItems(); Screens(result); returnTime = resultSeconds;
             resultTitle.text = won ? "YOU WON!" : "NICE TRY!";
             resultBody.text = won ? "Dispensing your gift…\nPlease collect it from the tray below." :
                 (lives <= 0 ? "You ran out of lives." : "Time is up!") + "\nYou caught " + gifts + " of " + targetGifts + " gifts.\nThank you for playing.";
             returnLabel.text = "Returning to start in " + Mathf.CeilToInt(returnTime) + " seconds";
-            if (won) Debug.Log("dispensing gift"); // Replace with the vending machine integration later.
+            if (won)
+            {
+                Debug.Log("dispensing gift");
+                dispensingPending = true;
+                resultBody.text = "Dispensing your gift…\nPlease wait for the motor cycle to finish.";
+                returnLabel.text = "Please wait…"; homeButton.interactable = false;
+                if (vendingStatusLabel) vendingStatusLabel.text = "Waiting for Arduino acknowledgement";
+                dispenser.Begin(Guid.NewGuid().ToString("N"));
+                PumpVending(); // Demo mode completes immediately; real serial replies are handled in Update.
+            }
         }
+
+        void OnDestroy() { dispenser?.Dispose(); }
 
         void ClearItems() { foreach (var item in itemPool) item.gameObject.SetActive(false); }
         void OnApplicationFocus(bool focus) { if (!focus) PauseRound(); }

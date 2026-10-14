@@ -19,6 +19,7 @@ public static class GiftCatcherWindowsSettings
         // Use the built-in Windows profile and retain the existing Android profile for later phone builds.
         BuildProfile.SetActiveBuildProfile(null);
         PlayerSettings.SetScriptingBackend(NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
+        PlayerSettings.SetApiCompatibilityLevel(NamedBuildTarget.Standalone, ApiCompatibilityLevel.NET_Unity_4_8);
         PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Standalone, "com.ddf.giftcatcher");
         PlayerSettings.defaultScreenWidth = 1080;
         PlayerSettings.defaultScreenHeight = 1920;

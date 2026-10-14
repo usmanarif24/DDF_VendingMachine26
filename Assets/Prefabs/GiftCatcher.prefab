@@ -10349,3 +10349,5 @@ MonoBehaviour:
   homeButton: {fileID: 5715831181583972169}
   resumeButton: {fileID: 3546566184758200932}
   touchInput: {fileID: 8656792778853153793}
+  vendingDefaults: {fileID: 4900000, guid: 632c622635654014b8ba3bd576f71df0, type: 3}
+  vendingStatusLabel: {fileID: 5829994181133413370}

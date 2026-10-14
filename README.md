@@ -1,8 +1,8 @@
 # Dubai Duty Free — Gift Catcher
 
-A Unity touchscreen game for an exhibition vending machine, with Windows desktop testing and an Android deployment profile. Visitors drag the shopping bag to catch falling gifts. Catching **10 gifts** wins a physical prize; **dispensing is currently a placeholder** for the vending integration team.
+A Unity touchscreen game for an exhibition vending machine, with Windows desktop testing and an Android deployment profile. Visitors drag the shopping bag to catch falling gifts. Catching **10 gifts** wins a physical prize; **Windows Arduino dispensing is implemented** and requires hardware commissioning.
 
-The development APK has been built successfully and the game was confirmed working by the project owner on a Samsung Galaxy S21 FE. Physical dispensing has not been implemented or tested.
+The development APK has been built successfully and the game was confirmed working by the project owner on a Samsung Galaxy S21 FE. Physical dispensing has not yet been tested against the machine.
 
 ## Get started
 
@@ -39,42 +39,93 @@ The game targets 60 FPS and prevents screen sleep while running. These applicati
 | --- | --- |
 | `Assets/Scenes/Main.unity` | Build scene, Canvas, EventSystem and game prefab instance |
 | `Assets/Prefabs/GiftCatcher.prefab` | Saved welcome, instructions, gameplay, result and pause screens; bag and 20 falling-item objects |
-| `Assets/Scripts/GiftCatcher/GiftCatcherGame.cs` | Round state, timer, spawning, catches, lives, results and dispensing placeholder |
+| `Assets/Scripts/GiftCatcher/GiftCatcherGame.cs` | Round state, timer, spawning, catches, lives, results and Arduino dispensing |
 | `Assets/Scripts/GiftCatcher/GiftCatcherInput.cs` | Single-pointer touch/mouse dragging and movement bounds |
 | `Assets/Scripts/GiftCatcher/GiftCatcherItem.cs` | References and per-item state for the authored object pool |
 | `Assets/Media/Backgrounds`, `Items`, `UI` | Extracted PNG artwork and original SVG UI artwork |
 | `Assets/Media/Source` | Original embedded WebP artwork |
 | `Assets/Editor` | Scene authoring, configuration, APK build and validation tools; excluded from Android runtime |
 | `Gift-Catcher-game.html` | Original standalone design/gameplay reference |
-| `Assets/StreamingAssets/settings.ini` | Existing boilerplate configuration; no vending transport is wired to it |
+| `Assets/StreamingAssets/settings.ini` | General and Arduino vending configuration |
 
 All gameplay UI and falling-item objects are saved editor objects. Runtime code changes their state, textures, positions and visibility; it does not construct the UI or instantiate a new object for each falling gift. The HTML reference uses different rules (45 seconds and weighted points); **the Unity game rules above are authoritative**.
 
 Select the **GiftCatcher** prefab instance in the scene to edit round rules and serialized references in the Inspector. Apply intended prefab changes when they should become the shared prefab defaults.
 
-## Vending dispensing handover
+## Arduino vending integration
 
-The integration entry point is **`GiftCatcherGame.Finish(bool won)`** in `Assets/Scripts/GiftCatcher/GiftCatcherGame.cs`:
+Unity now implements the command/reply protocol in the supplied `VendingMachine_Targetted_1-4.ino`. The Arduino file is not changed, uploaded or copied into this repository.
 
-```csharp
-if (won) Debug.Log("dispensing gift");
+**Hardware transport is Windows COM serial only.** Android builds can still run in demo mode; real Android dispensing requires a native USB serial bridge implementing `IVendingConnection`. The desktop transport does not work on Android.
+
+### Configure the machine
+
+Edit `Assets/StreamingAssets/settings.ini` before building, or `<Game>_Data/StreamingAssets/settings.ini` in a Windows build. Restart the application after changing it. The packaged `Assets/Settings/VendingDefaults.txt` fallback is synchronized by the editor setup tool; `settings.ini` remains the source configuration.
+
+```ini
+[vending]
+enabled = 0
+port = COM3
+num_motors = 4
+motor_1_turns = 3
+motor_2_turns = 3
+motor_3_turns = 3
+motor_4_turns = 3
+inventory_revision = 1
+startup_delay_ms = 2000
+response_timeout_ms = 6000
+dtr = 1
+rts = 0
 ```
 
-This executes when the visitor catches the tenth gift. The round transitions to the result screen before the log is emitted. Normal gameplay stops updating in the result state, so additional frames do not emit another request. Losing rounds do not emit the log. **There is no hardware call, connection status, acknowledgement, round ID, retry handling, or dispense completion tracking yet.**
+- `enabled=0`: demo mode. No serial connection is opened, and the result explicitly says no physical gift was dispensed. Set `enabled=1` for hardware after choosing the actual Arduino port.
+- `port`: the Arduino COM port from Windows Device Manager; COM3 is a placeholder. Close Arduino Serial Monitor and other programs using that port.
+- `num_motors`: active springs/trays (1–4, matching the unchanged firmware).
+- `motor_N_turns`: available acknowledged cycles for that tray. One win or debug request consumes one cycle; motor 1 with 3 turns is used for three requests before switching to motor 2. Zero-count trays are skipped. These counts do not instruct three cycles on one win or measure physical revolutions.
+- `inventory_revision`: increment after physically refilling, then restart, to seed the configured counts again. With the same revision, saved remaining counts take precedence over edited initial counts. Changing the number of trays also requires a new revision. An unresolved request must still be reconciled; changing the revision does not bypass its lock.
+- `startup_delay_ms`: wait after opening the port, allowing Arduino boards that reset on open to finish setup (0–10000 ms).
+- `response_timeout_ms`: total acknowledgement deadline after the startup wait (4000–60000 ms). The firmware runs a motor for up to 3 seconds, so the default is 6000 ms.
+- `dtr` / `rts`: serial control-line state (0 or 1), configurable for the connected board.
 
-The winning UI currently displays “Dispensing your gift…” and collection instructions, with a demo label. This is placeholder copy and does not confirm a physical gift has been delivered.
+Baud rate **9600**, **8N1**, no serial handshake, and newline terminators are fixed to match the firmware.
 
-The vending team should:
+### Win and acknowledgement flow
 
-1. Replace the log with a call into a dedicated vending controller/service after agreeing the vendor protocol and Android permissions. The transport may be serial, USB, network, or a vendor SDK; no transport is assumed by this project.
-2. Issue one request per winning round and add a unique round/request ID. Use the vendor's deduplication support or equivalent bookkeeping so a reconnect, retry, or app restart cannot dispense twice for the same win.
-3. Keep communications asynchronous. Marshal UI changes back onto Unity's main thread; do not block the game thread while waiting for the machine.
-4. Add pending, confirmed-success, timeout, and error states to the authored result screen. Show collection instructions after the appropriate machine acknowledgement. Provide a staff-help message for errors and avoid unattended duplicate retries.
-5. **Gate the 12-second result auto-return while a dispense is pending.** The current `Update` result branch counts down immediately after a win. Define when the countdown should start following success/failure, and keep a pending request associated with its original round even if the app backgrounds.
-6. Define machine-ready/stock checks, fault recovery, collection detection if supported, and the next-visitor reset policy. Prevent a new prize attempt while the machine is unavailable or an earlier dispense is unresolved.
-7. Test actual hardware for one dispense per win, no dispense on loss/timeout, disconnection, empty stock, delayed acknowledgement, errors, duplicate responses, background/resume, and application restart.
+`GiftCatcherGame.Finish(true)` starts a `VendingDispenser` request. It logs `dispensing gift`, opens the configured port on a background thread, waits for board startup, then sends `start\n`. Only after receiving `Motor control enabled.` does it send the next nonempty tray number followed by a newline.
 
-The current frontend rule validation checks the console placeholder. Update `GiftCatcherValidation` to use a fake vending service when replacing that placeholder; the existing test expects exactly one `dispensing gift` log for a win.
+The result screen remains pending until `Starting Motor N` and a matching terminal message arrive:
+
+- `Motor N stopped due to LOW signal after 0.15s delay.`
+- `Motor N stopped after 3 seconds.`
+
+Replies for another motor, stale terminal messages before a start acknowledgement, and repeated enable replies do not cause another motor command. After acknowledged cycle completion Unity sends `stop\n` to disable new commands and closes the port. It shows **“Dispense cycle complete. Please check the collection tray.”** The normal 12-second result countdown starts only after completion; the visitor cannot return home while a request is pending.
+
+**Firmware limits:** `stop` only disables new motor commands; it does not stop an already-running motor. The firmware itself stops the motor using its LOW-input condition after at least 2 seconds plus 150 ms, or its 3-second timer. Neither serial stop message confirms that a gift physically reached the tray. No physical-delivery guarantee, physical stock detection, emergency-stop command, or request-ID acknowledgement exists in this firmware. Unity tracks a software count of acknowledged cycles; it cannot verify stock or the exact mechanical rotation angle.
+
+### Space-key debug testing
+
+Set `[general] debug=1`, restart Play mode/the app, and focus the Unity Game view. Each **Space press** runs one request through the same result screen and tray-selection logic without needing to win the game. Holding Space does not repeatedly dispense. Presses while a request is pending or the machine is faulted are ignored.
+
+With `[vending] enabled=1`, Space sends a real command and consumes one acknowledged inventory cycle. With `enabled=0`, it only simulates completion and advances a **separate demo inventory**. Set `debug=0` before exhibition deployment.
+
+Remaining counts are saved in `vending-inventory.txt` (hardware) or `vending-inventory-demo.txt` (demo) under `Application.persistentDataPath`. Inventory is updated atomically before clearing the pending-request journal, and a duplicate completion ID is not counted twice. A failed or unconfirmed cycle does not decrement the confirmed count and remains subject to staff recovery. Once every tray is empty, the app blocks further dispensing and asks for a refill.
+
+### Failure and recovery
+
+Unity sends a motor command at most once per winning request and never automatically retries it. Before sending that command it saves a round ID and motor in **`vending-pending.txt`** under `Application.persistentDataPath`. The record is removed only after the matching motor-stop reply. Disconnects, missing replies or shutdown can leave the record in place, preventing a new dispense after restarting the application.
+
+Connection/configuration failures or uncertain results show a staff-help screen, block new rounds and stop automatic return. For recovery, exit the app, inspect the board/motor/tray and resolve the fault. If a pending file remains, have a staff member reconcile whether the prize was dispensed, then remove that file before restarting. Do not remove it simply to retry: the firmware cannot deduplicate commands. A crash between saving the record and sending the command intentionally favors staff review over a possible duplicate vend. The journal is local to one app installation; do not operate multiple app instances against the same board.
+
+Unity API/UI changes are processed on the main thread; serial waits do not block frame updates. Gameplay still pauses on focus loss; an active dispense continues to await its Arduino reply while the app runs in the background. Existing UI objects are reused; no runtime screens are constructed.
+
+### Code and testing
+
+- `VendingDispenser.cs`: configuration, exact reply parser, asynchronous serial transaction, recovery journal and `IVendingConnection` transport seam.
+- `GiftCatcherGame.cs`: win dispatch, pending/success/demo/failure result UI and reset gating.
+- `GiftCatcherVendingSetup.cs`: wires the bundled configuration and existing result status label into the saved prefab.
+- **Gift Catcher → Validate Arduino Integration (No Hardware)**: fake-serial checks for all four motors, reply ordering, duplicate suppression, completion, disconnect, acknowledgement timeout, restart lock and disabled-mode isolation; also reruns game rules with hardware forcibly disabled.
+
+Windows uses Unity's **.NET Framework** API compatibility profile for `System.IO.Ports`. Physical hardware has not been tested by these automated checks. Before exhibition deployment test each selected motor, actual sensor timing, disconnect/timeout, app restart with an unresolved request, result gating and manual staff recovery. Android transport, physical inventory sensing and kiosk/device management remain separate integration work.
 
 ## Windows configuration and building
 
@@ -82,7 +133,7 @@ The active target is **Windows x64**, using the built-in Windows build profile. 
 
 | Setting | Value |
 | --- | --- |
-| Scripting / architecture | Mono / Windows x64 |
+| Scripting / architecture | Mono / Windows x64; .NET Framework API compatibility |
 | Graphics | Direct3D 11 |
 | Display | Fullscreen Window at the monitor's native resolution |
 | Layout | 1080 × 1920 reference; Scale With Screen Size → Expand |
@@ -139,6 +190,7 @@ Alternatively, use **Build** in the Android Build Profile. Copy the APK to the p
 | Configure Windows Testing | Activates Windows x64 and sets the desktop player/canvas settings; retains the Android profile |
 | Validate and Build Windows | Runs the round-rule checks and builds the Windows development player |
 | Build Android APK | Builds the development APK without attempting device deployment |
+| Validate Arduino Integration (No Hardware) | Fake serial protocol, recovery and result-screen checks; never opens the real port |
 | Validate Round Rules | Exercises an isolated copy of the saved prefab without altering Main or entering Play mode |
 | Validate Android Settings | Checks Android player settings and portrait-frame fit |
 | Lock Game View to 1x | Toggles an editor-only preview zoom lock; disable to choose zoom freely |

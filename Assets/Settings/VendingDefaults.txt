@@ -1,0 +1,29 @@
+[general]
+; debug=1 enables one dispense per Space press (focus the Unity Game view).
+; With vending.enabled=1 this moves the real spring and consumes inventory.
+debug = 0
+
+[vending]
+; Set enabled=1 only after choosing the Arduino COM port.
+; enabled=0 is demo mode and NEVER opens a serial port.
+enabled = 1
+port = COM6
+; Firmware supports at most four trays. Trays are used in order 1 -> 2 -> 3 -> 4.
+num_motors = 4
+; One win/Space press runs ONE acknowledged cycle and consumes one turn.
+; These are available cycle counts, not multiple turns per winning request.
+motor_1_turns = 3
+motor_2_turns = 3
+motor_3_turns = 3
+motor_4_turns = 3
+; After physically refilling, increment this revision and restart to reload counts.
+; Do not increment it to bypass an unresolved dispensing request.
+inventory_revision = 1
+; Protocol is fixed by the Arduino: 9600 baud, 8N1, newline commands.
+; Some boards reset when the serial port opens; wait for setup to finish.
+startup_delay_ms = 2000
+; Includes enable/start/stop replies, and must exceed the 3-second motor cycle.
+response_timeout_ms = 6000
+dtr = 1
+rts = 0
+
