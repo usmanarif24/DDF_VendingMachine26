@@ -8,18 +8,6 @@ using UnityEngine;
 public static class GiftCatcherValidation
 {
     const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-    [InitializeOnLoadMethod]
-    static void OnImport()
-    {
-        EditorApplication.delayCall += () =>
-        {
-            if (SessionState.GetBool("DDF.GiftCatcher.ValidatedV1", false) || EditorApplication.isPlayingOrWillChangePlaymode) return;
-            if (!AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/GiftCatcher.prefab")) return;
-            SessionState.SetBool("DDF.GiftCatcher.ValidatedV1", true);
-            Validate();
-        };
-    }
-
     [MenuItem("Gift Catcher/Validate Round Rules")]
     public static void Validate()
     {
@@ -33,7 +21,7 @@ public static class GiftCatcherValidation
             // Rule checks must never actuate hardware, even when the operator enabled settings.ini.
             typeof(GiftCatcherGame).GetField("vendingConfig", Private).SetValue(game, new VendingSettings { Enabled = false });
             typeof(GiftCatcherGame).GetField("inventory", Private).SetValue(game, new VendingInventory(new VendingSettings { Turns = new[] { 1000, 1000, 1000, 1000 } }, null));
-            Assert(game.itemPool.Length == 20 && game.giftTextures.Length == 8, "Authored artwork and pool");
+            Assert(game.itemPool.Length == 20 && game.giftTextures.Length == 6, "Authored artwork and pool");
             Begin(game);
             Assert(game.timeLabel.text == "1:00" && game.giftsLabel.text == "0 / 10", "Initial round HUD");
             game.MoveBag(10000);
@@ -78,7 +66,7 @@ public static class GiftCatcherValidation
     static void Catch(GiftCatcherGame game, bool rock)
     {
         var item = game.itemPool[0]; item.isRock = rock; item.bottomOffset = 0; item.catchHalfWidth = 20;
-        float catchY = game.bag.anchoredPosition.y + game.bag.sizeDelta.y * .36f;
+        float catchY = game.bag.anchoredPosition.y + game.bag.sizeDelta.y * .30f;
         item.rect.anchoredPosition = new Vector2(game.bag.anchoredPosition.x, catchY + 8);
         item.gameObject.SetActive(true); Tick(game, .05f);
     }

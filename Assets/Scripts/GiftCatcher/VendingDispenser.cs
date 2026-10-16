@@ -8,6 +8,7 @@ using System.IO.Ports;
 
 namespace DDF.GiftCatcher
 {
+    [Serializable]
     public sealed class VendingSettings
     {
         public bool Enabled, Dtr = true, Rts;
@@ -16,6 +17,27 @@ namespace DDF.GiftCatcher
         public int[] Turns = { 3, 3, 3, 3 };
         public string Port = "COM3";
         public int Motor = 1, StartupMs = 2000, TimeoutMs = 6000;
+
+        // Select a mode before loading inventory; a missing port must never consume real stock.
+        // Keep that choice for the session. Never turn a failed in-flight motor request into success.
+        public VendingSettings ForAvailableHardware(out string mode)
+        {
+            var effective = (VendingSettings)MemberwiseClone();
+            effective.Turns = (int[])Turns.Clone();
+            mode = "DEMO — physical vending disabled";
+            if (!Enabled) return effective;
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            foreach (string available in SerialPort.GetPortNames())
+                if (string.Equals(available, Port, StringComparison.OrdinalIgnoreCase))
+                { mode = "Hardware ready (" + Port + ")"; return effective; }
+            mode = "SIMULATION — " + Port + " not connected";
+#else
+            mode = "SIMULATION — serial hardware unavailable on this device";
+#endif
+            effective.Enabled = false;
+            return effective;
+        }
+
         public static VendingSettings Parse(string text)
         {
             var ini = new INIParser(); ini.OpenFromString(text);
@@ -44,6 +66,20 @@ namespace DDF.GiftCatcher
             if (settings.StartupMs < 0 || settings.StartupMs > 10000 || settings.TimeoutMs < 4000 || settings.TimeoutMs > 60000)
                 throw new FormatException("Invalid vending startup/response timeout.");
             return settings;
+        }
+
+        public void Validate()
+        {
+            if (NumMotors < 1 || NumMotors > 4 || InventoryRevision < 1)
+                throw new FormatException("Active trays must be 1–4; inventory revision must be positive.");
+            if (Turns == null || Turns.Length != 4) throw new FormatException("Four tray counts are required.");
+            foreach (int count in Turns)
+                if (count < 0 || count > 100000) throw new FormatException("Tray counts must be 0–100000.");
+            if (Motor < 1 || Motor > 4) throw new FormatException("Fallback motor must be 1–4.");
+            if (string.IsNullOrWhiteSpace(Port) || Port.Length > 32 || Port.IndexOfAny(new[] { '\r', '\n' }) >= 0)
+                throw new FormatException("Enter a valid COM port name.");
+            if (StartupMs < 0 || StartupMs > 10000 || TimeoutMs < 4000 || TimeoutMs > 60000)
+                throw new FormatException("Startup delay must be 0–10000 ms; reply timeout must be 4000–60000 ms.");
         }
     }
 

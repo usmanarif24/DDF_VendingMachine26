@@ -9,15 +9,6 @@ using UnityEngine;
 
 public static class GiftCatcherVendingValidation
 {
-    [InitializeOnLoadMethod]
-    static void OnImport()
-    {
-        EditorApplication.delayCall += () =>
-        {
-            if (SessionState.GetBool("DDF.Vending.ValidationStock1", false) || EditorApplication.isPlayingOrWillChangePlaymode) return;
-            SessionState.SetBool("DDF.Vending.ValidationStock1", true); Validate();
-        };
-    }
     [MenuItem("Gift Catcher/Validate Arduino Integration (No Hardware)")]
     public static void Validate()
     {

@@ -5,9 +5,7 @@ using UnityEditor;
 
 public static class GiftCatcherVendingSetup
 {
-    [InitializeOnLoadMethod]
-    static void OnImport() { EditorApplication.delayCall += Wire; }
-    [MenuItem("Gift Catcher/Update Vending Configuration References")]
+    [MenuItem("Gift Catcher/Update Legacy Vending Migration Defaults")]
     public static void Wire()
     {
         if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode) return;

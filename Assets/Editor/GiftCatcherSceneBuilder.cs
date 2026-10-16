@@ -58,10 +58,9 @@ public static class GiftCatcherSceneBuilder
         Text("Title", w, "GIFT CATCHER", 0, 560, 900, 100, 76);
         Text("Tagline", w, "Win a surprise", 0, 450, 900, 100, 58);
         Text("Welcome Copy", w, "A world of surprises is falling your way.", 0, 350, 850, 70, 30);
-        Art("Hero Bag", w, Load("UI/bag"), 0, -100, 580, 605);
-        Art("Hero Teddy", w, Load("Items/teddy"), 250, 80, 300, 450);
+        Art("Hero Bag", w, Load("UI/bag"), 0, -100, 566.254f, 605);
+        Art("Hero Teddy", w, Load("Items/teddy"), 250, 80, 300, 300);
         Art("Hero Gift", w, Load("Items/gift"), -270, 100, 230, 230);
-        Text("Hero Bag Branding", w, "Dubai\nDuty Free", 0, -85, 300, 140, 45, Color.white);
         Text("Round Promise", w, "10 gifts  •  60 seconds  •  3 lives", 0, -570, 940, 80, 37);
         game.startButton = Button("Start", w, "LET’S CATCH GIFTS", 0, -730, 940, 150);
 
@@ -72,6 +71,7 @@ public static class GiftCatcherSceneBuilder
         Instruction(ins, "Catch gifts", "Drag the bag left and right\nto catch the falling gifts.", Load("Items/gift"), 280);
         Instruction(ins, "Avoid rocks", "Each rock you catch costs one life.\nMissing a gift does not cost a life.", Load("Items/rock"), 20);
         Instruction(ins, "Win your surprise", "Catch 10 gifts in 60 seconds.\nYou have 3 lives. Good luck!", Load("Items/teddy"), -260);
+        ((RectTransform)ins.Find("Win your surprise Art")).sizeDelta = new Vector2(150, 150);
         game.readyButton = Button("Ready", ins, "I’M READY — LET’S PLAY", 0, -730, 940, 150);
 
         var play = game.gameplay.transform;
@@ -94,9 +94,8 @@ public static class GiftCatcherSceneBuilder
         surface.color = Color.clear; surface.raycastTarget = true;
         game.touchInput = game.playfield.gameObject.AddComponent<GiftCatcherInput>();
         game.touchInput.game = game;
-        game.bag = Art("Player Bag", game.playfield, Load("UI/bag"), 0, -490, 330, 345).rectTransform;
-        Text("Bag Branding", game.bag, "Dubai\nDuty Free", 0, 0, 190, 95, 28, Color.white);
-        game.giftTextures = new[] { Load("Items/gift"), Load("Items/teddy"), Load("Items/perfume"), Load("Items/chocolate"), Load("Items/watch"), Load("Items/sunglasses"), Load("Items/headphones"), Load("Items/suitcase") };
+        game.bag = Art("Player Bag", game.playfield, Load("UI/bag"), 0, -470, 322.905f, 345).rectTransform;
+        game.giftTextures = new[] { Load("Items/teddy"), Load("Items/perfume"), Load("Items/chocolate"), Load("Items/headphones"), Load("Items/neck-pillow"), Load("Items/water-bottle") };
         game.rockTexture = Load("Items/rock");
         game.itemPool = new GiftCatcherItem[20];
         for (int i = 0; i < game.itemPool.Length; i++)
@@ -128,6 +127,7 @@ public static class GiftCatcherSceneBuilder
         game.resumeButton = Button("Resume", game.pause.transform, "RESUME", 0, -160, 760, 130);
         game.welcome.SetActive(true); game.instructions.SetActive(false); game.gameplay.SetActive(false); game.result.SetActive(false); game.pause.SetActive(false);
         if (!AssetDatabase.IsValidFolder("Assets/Prefabs")) AssetDatabase.CreateFolder("Assets", "Prefabs");
+        GiftCatcherIdleBackgroundSetup.Configure(game);
         PrefabUtility.SaveAsPrefabAssetAndConnect(root.gameObject, PrefabPath, InteractionMode.AutomatedAction);
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
         EditorSceneManager.MarkSceneDirty(scene);
