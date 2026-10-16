@@ -1,7 +1,7 @@
 [general]
 ; debug=1 enables one dispense per Space press (focus the Unity Game view).
 ; With vending.enabled=1 this moves the real spring and consumes inventory.
-debug = 0
+debug = 1
 
 [vending]
 ; Set enabled=1 only after choosing the Arduino COM port.
