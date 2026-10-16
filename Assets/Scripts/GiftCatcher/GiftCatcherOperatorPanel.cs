@@ -21,17 +21,23 @@ namespace DDF.GiftCatcher
         public GiftCatcherGame game;
         public GameObject panel;
         public Button openButton, closeButton, saveButton, refillButton, testDispenseButton;
+        public Button backupDispenseButton;
         public TMP_Text status, message;
         public Toggle recovery;
         public Field[] fields;
         OperatorConfiguration source;
         bool watchingTest;
+        int accessTapCount;
+        float lastAccessTap;
+        int backupTapCount;
+        float firstBackupTap;
 
         void Awake()
         {
             RepairLayout();
             panel.SetActive(false);
-            openButton.onClick.AddListener(Open);
+            openButton.onClick.AddListener(TapOperatorAccess);
+            if (backupDispenseButton) backupDispenseButton.onClick.AddListener(TapBackupDispense);
             closeButton.onClick.AddListener(Close);
             saveButton.onClick.AddListener(() => SaveAndRestart(false));
             refillButton.onClick.AddListener(Refill);
@@ -41,6 +47,8 @@ namespace DDF.GiftCatcher
         void Update()
         {
             openButton.interactable = game.CanOpenOperator;
+            if (backupDispenseButton) backupDispenseButton.interactable = game.CanBackupDispense;
+            if (!game.CanBackupDispense) backupTapCount = 0;
             if (panel.activeSelf)
             {
                 bool idle = game.CanOpenOperator;
@@ -64,6 +72,7 @@ namespace DDF.GiftCatcher
 
         public void Open()
         {
+            accessTapCount = 0;
             if (!game.CanOpenOperator) return;
             game.SetOperatorOpen(true); panel.SetActive(true); panel.transform.SetAsLastSibling();
             RepairLayout();
@@ -97,7 +106,52 @@ namespace DDF.GiftCatcher
         public void Close()
         {
             if (!game.CanOpenOperator) return;
+            accessTapCount = 0;
             panel.SetActive(false); game.SetOperatorOpen(false);
+        }
+
+        void TapOperatorAccess()
+        {
+            if (!game.CanOpenOperator || panel.activeSelf) { accessTapCount = 0; return; }
+            float now = Time.realtimeSinceStartup;
+            if (now - lastAccessTap > 2f) accessTapCount = 0;
+            lastAccessTap = now;
+            if (++accessTapCount >= 3) Open();
+        }
+
+        void TapBackupDispense()
+        {
+            if (!game.CanBackupDispense) { backupTapCount = 0; return; }
+            float now = Time.realtimeSinceStartup;
+            if (backupTapCount == 0 || now - firstBackupTap > 2f)
+            {
+                backupTapCount = 0;
+                firstBackupTap = now;
+            }
+            if (++backupTapCount < 3) return;
+            backupTapCount = 0;
+            game.BackupDispense();
+        }
+
+        public bool ConfigureAccessButton()
+        {
+            var rect = (RectTransform)openButton.transform;
+            var topLeft = new Vector2(0, 1);
+            var size = new Vector2(160, 120);
+            var image = openButton.GetComponent<Image>();
+            var label = openButton.GetComponentInChildren<TMP_Text>(true);
+            bool changed = rect.anchorMin != topLeft || rect.anchorMax != topLeft || rect.pivot != topLeft ||
+                rect.anchoredPosition != Vector2.zero || rect.sizeDelta != size ||
+                image.color != Color.clear || !image.raycastTarget ||
+                openButton.transition != Selectable.Transition.None || (label && label.gameObject.activeSelf);
+            rect.anchorMin = rect.anchorMax = rect.pivot = topLeft;
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = size;
+            image.color = Color.clear;
+            image.raycastTarget = true;
+            openButton.transition = Selectable.Transition.None;
+            if (label) label.gameObject.SetActive(false);
+            return changed;
         }
 
         void TestDispense()
@@ -117,9 +171,9 @@ namespace DDF.GiftCatcher
         // Also repairs the first panel revision without requiring it to be rebuilt.
         public bool RepairLayout()
         {
+            bool changed = ConfigureAccessButton();
             var scroll = panel.GetComponentInChildren<ScrollRect>(true);
-            if (!scroll || !scroll.content) return false;
-            bool changed = false;
+            if (!scroll || !scroll.content) return changed;
             // The refill action owns this internal generation; staff should not edit it by hand.
             foreach (var field in fields)
             {

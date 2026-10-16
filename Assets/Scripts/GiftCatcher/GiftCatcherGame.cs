@@ -5,6 +5,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
+using DG.Tweening;
 
 namespace DDF.GiftCatcher
 {
@@ -41,8 +42,9 @@ namespace DDF.GiftCatcher
         public bool OperatorOpen { get; private set; }
         public bool CanOpenOperator => !dispensingPending && (dispenser == null || !dispenser.Busy);
         public bool PendingRecovery => File.Exists(Path.Combine(Application.persistentDataPath, "vending-pending.txt"));
-        public bool CanTestDispense => OperatorOpen && CanOpenOperator && !PendingRecovery &&
+        public bool CanBackupDispense => CanOpenOperator && !PendingRecovery &&
             string.IsNullOrEmpty(vendingError) && inventory != null && inventory.NextMotor() != 0 && vendingConfig != null;
+        public bool CanTestDispense => OperatorOpen && CanBackupDispense;
         public string OperatorStatus
         {
             get
@@ -65,6 +67,17 @@ namespace DDF.GiftCatcher
         public void TestDispense()
         {
             if (!CanTestDispense) return;
+            BeginManualDispense();
+        }
+
+        public void BackupDispense()
+        {
+            if (!CanBackupDispense) return;
+            BeginManualDispense();
+        }
+
+        void BeginManualDispense()
+        {
             try
             {
                 ReleaseDispenser();
@@ -82,7 +95,7 @@ namespace DDF.GiftCatcher
             {
                 operatorDispense = false; dispensingPending = false;
                 vendingError = exception.Message;
-                OperatorDispenseMessage = "Test dispense failed: " + exception.Message;
+                OperatorDispenseMessage = "Manual dispense failed: " + exception.Message;
                 ClearItems(); ShowVendingFault();
             }
         }
@@ -111,6 +124,8 @@ namespace DDF.GiftCatcher
         void ShowVendingFault()
         {
             state = State.Result; Screens(result);
+            var celebration = result.GetComponent<GiftCatcherCelebration>();
+            if (celebration) celebration.Show(false);
             bool empty = vendingError == "All trays are empty.";
             resultTitle.text = empty ? "MACHINE EMPTY" : "MACHINE UNAVAILABLE";
             resultBody.text = empty ? "All trays are empty.\nPlease ask a team member to refill the machine." :
@@ -138,7 +153,8 @@ namespace DDF.GiftCatcher
         void UpdateRuleCopy()
         {
             SetCopy(welcome.transform, "Round Promise", targetGifts + " gifts  •  " + roundSeconds + " seconds  •  " + startingLives + " lives");
-            SetCopy(instructions.transform, "Win your surprise Copy", "Catch " + targetGifts + " gifts in " + roundSeconds + " seconds.\nYou have " + startingLives + " lives.");
+            SetCopy(instructions.transform, "Win your surprise Copy", "Reach " + targetGifts + " gifts to unlock\nyour surprise.");
+            SetCopy(instructions.transform, "Round Details", targetGifts + " GIFTS     /     " + roundSeconds + "s     /     " + startingLives + " LIVES");
             SetCopy(gameplay.transform, "Target Hint", "Catch " + targetGifts + " gifts to win your surprise");
         }
 
@@ -173,18 +189,21 @@ namespace DDF.GiftCatcher
             {
                 operatorDispense = false;
                 bool failed = outcome.Kind == VendingDispenser.ResultKind.Failed || outcome.Kind == VendingDispenser.ResultKind.Empty;
-                OperatorDispenseMessage = failed ? "Test dispense failed: " + outcome.Detail :
+                OperatorDispenseMessage = failed ? "Manual dispense failed: " + outcome.Detail :
                     outcome.Kind == VendingDispenser.ResultKind.Demo ? "Demo dispense complete. Demo progress saved; no motor moved." :
                     "Dispense cycle complete. Progress saved. Check the collection tray.";
                 if (failed) vendingError = outcome.Detail;
                 else if (inventory.NextMotor() == 0) vendingError = "All trays are empty.";
                 if (!string.IsNullOrEmpty(vendingError)) { ClearItems(); ShowVendingFault(); }
-                Debug.Log("Operator test dispense: " + outcome.Kind + " " + outcome.Detail);
+                Debug.Log("Manual dispense: " + outcome.Kind + " " + outcome.Detail);
                 return;
             }
             if (outcome.Kind == VendingDispenser.ResultKind.Failed || outcome.Kind == VendingDispenser.ResultKind.Empty)
             {
                 vendingError = outcome.Detail;
+                var celebration = result.GetComponent<GiftCatcherCelebration>();
+                if (celebration) celebration.Show(false);
+                resultTitle.text = "PLEASE ASK\nOUR TEAM.";
                 resultBody.text = outcome.Kind == VendingDispenser.ResultKind.Empty ? "All trays are empty.\nPlease ask a team member to refill the machine." : "We could not confirm the dispense cycle.\nPlease ask a team member for help.";
                 if (vendingStatusLabel) vendingStatusLabel.text = "Machine needs staff attention";
                 Debug.LogError("Vending failed: " + outcome.Detail);
@@ -195,21 +214,33 @@ namespace DDF.GiftCatcher
             homeButton.interactable = true;
             returnTime = resultSeconds;
             resultBody.text = outcome.Kind == VendingDispenser.ResultKind.Demo ?
-                "Demo round complete.\nNo physical gift was dispensed." :
-                "Dispense cycle complete.\nPlease check the collection tray.";
+                "Demo experience\nNo gift has been dispensed." :
+                "Your surprise is ready.\nCollect it from the tray below.";
             if (vendingStatusLabel) vendingStatusLabel.text = outcome.Kind == VendingDispenser.ResultKind.Demo ? vendingMode : "Motor cycle acknowledged by Arduino";
             Debug.Log("Vending result: " + outcome.Kind + " " + outcome.Detail);
         }
 
         void Screens(GameObject visible)
         {
-            welcome.SetActive(visible == welcome);
-            instructions.SetActive(visible == instructions);
-            gameplay.SetActive(visible == gameplay);
-            result.SetActive(visible == result);
-            pause.SetActive(false);
+            foreach (var page in new[] { welcome, instructions, gameplay, result, pause })
+                FadePage(page, page == visible);
             isPaused = false;
             touchInput.Release();
+        }
+
+        void FadePage(GameObject page, bool show)
+        {
+            var group = page.GetComponent<CanvasGroup>();
+            if (!group) group = page.AddComponent<CanvasGroup>();
+            group.DOKill();
+            group.interactable = group.blocksRaycasts = show;
+            if (show)
+            {
+                if (!page.activeSelf) { group.alpha = 0; page.SetActive(true); }
+                group.DOFade(1, .4f).SetEase(Ease.OutCubic).SetUpdate(true);
+            }
+            else if (page.activeSelf)
+                group.DOFade(0, .25f).SetUpdate(true).OnComplete(() => page.SetActive(false));
         }
 
         public void ShowWelcome()
@@ -255,7 +286,7 @@ namespace DDF.GiftCatcher
 
         void Tick(float dt)
         {
-            if (isPaused || OperatorOpen) return;
+            if (isPaused || OperatorOpen || operatorDispense) return;
             if (state == State.Instructions)
             {
                 idleTime -= dt; if (idleTime <= 0) ShowWelcome(); return;
@@ -264,7 +295,6 @@ namespace DDF.GiftCatcher
             {
                 if (dispensingPending || !string.IsNullOrEmpty(vendingError)) return;
                 returnTime -= dt;
-                returnLabel.text = "Returning to start in " + Mathf.CeilToInt(Mathf.Max(0, returnTime)) + " seconds";
                 if (returnTime <= 0) ShowWelcome(); return;
             }
             if (state == State.Countdown)
@@ -360,8 +390,8 @@ namespace DDF.GiftCatcher
             giftsLabel.text = gifts + " / " + targetGifts;
             int seconds = Mathf.CeilToInt(timeLeft);
             timeLabel.text = (seconds / 60) + ":" + (seconds % 60).ToString("00");
-            timeLabel.color = timeLeft <= 10 ? new Color32(237, 28, 36, 255) : new Color32(35, 31, 32, 255);
-            livesLabel.text = lives + " / " + startingLives;
+            timeLabel.color = timeLeft <= 10 ? new Color32(166, 29, 39, 255) : new Color32(102, 9, 24, 255);
+            livesLabel.text = lives.ToString();
             progress.fillAmount = (float)gifts / targetGifts;
         }
 
@@ -369,15 +399,18 @@ namespace DDF.GiftCatcher
         {
             if (state == State.Result) return;
             state = State.Result; ClearItems(); Screens(result); returnTime = resultSeconds;
-            resultTitle.text = won ? "YOU WON!" : "NICE TRY!";
-            resultBody.text = won ? "Dispensing your gift…\nPlease collect it from the tray below." :
-                (lives <= 0 ? "You ran out of lives." : "Time is up!") + "\nYou caught " + gifts + " of " + targetGifts + " gifts.\nThank you for playing.";
-            returnLabel.text = "Returning to start in " + Mathf.CeilToInt(returnTime) + " seconds";
+            resultTitle.text = won ? "A LITTLE JOY,\nJUST FOR YOU." : "THANK YOU\nFOR PLAYING.";
+            homeButton.interactable = !won;
+            var celebration = result.GetComponent<GiftCatcherCelebration>();
+            if (celebration) celebration.Show(won);
+            resultBody.text = won ? "Preparing your surprise…\nPlease wait a moment." :
+                "You collected " + gifts + " of " + targetGifts + " gifts.\nAnother moment of joy awaits.";
+            returnLabel.text = "";
             if (won)
             {
                 Debug.Log("dispensing gift");
                 dispensingPending = true;
-                resultBody.text = "Dispensing your gift…\nPlease wait for the motor cycle to finish.";
+                resultBody.text = "Preparing your surprise…\nPlease wait a moment.";
                 returnLabel.text = "Please wait…"; homeButton.interactable = false;
                 if (vendingStatusLabel) vendingStatusLabel.text = "Waiting for Arduino acknowledgement";
                 dispenser.Begin(Guid.NewGuid().ToString("N"));
@@ -385,7 +418,12 @@ namespace DDF.GiftCatcher
             }
         }
 
-        void OnDestroy() { dispenser?.Dispose(); }
+        void OnDestroy()
+        {
+            dispenser?.Dispose();
+            foreach (var page in new[] { welcome, instructions, gameplay, result, pause })
+                if (page && page.TryGetComponent<CanvasGroup>(out var group)) group.DOKill();
+        }
 
         void ClearItems() { foreach (var item in itemPool) item.gameObject.SetActive(false); }
         void OnApplicationFocus(bool focus) { if (!focus) PauseRound(); }
@@ -394,8 +432,8 @@ namespace DDF.GiftCatcher
         {
             touchInput.Release();
             if (state != State.Playing && state != State.Countdown) return;
-            isPaused = true; pause.SetActive(true);
+            isPaused = true; FadePage(pause, true);
         }
-        public void Resume() { touchInput.Release(); isPaused = false; pause.SetActive(false); }
+        public void Resume() { touchInput.Release(); isPaused = false; FadePage(pause, false); }
     }
 }

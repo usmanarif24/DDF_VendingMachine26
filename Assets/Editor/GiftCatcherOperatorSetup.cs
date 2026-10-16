@@ -35,6 +35,7 @@ public static class GiftCatcherOperatorSetup
             if (existing)
             {
                 bool changed = existing.RepairLayout();
+                if (AddBackupAccess(existing)) changed = true;
                 if (!existing.testDispenseButton)
                 {
                     existing.testDispenseButton = Button(existing.panel.transform, "Test Dispense", "TEST DISPENSE", 380, 610, 230, 80, 25);
@@ -106,10 +107,28 @@ public static class GiftCatcherOperatorSetup
             controller.message = Label(panel, "Message", "", 0, -760, 990, 140, 27);
             controller.saveButton = Button(panel, "Save and Restart", "SAVE AND RESTART", 0, -885, 990, 100, 36);
             controller.RepairLayout();
+            AddBackupAccess(controller);
             panel.gameObject.SetActive(false);
             PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
         }
         finally { PrefabUtility.UnloadPrefabContents(root); }
+    }
+
+    static bool AddBackupAccess(GiftCatcherOperatorPanel controller)
+    {
+        if (controller.backupDispenseButton) return false;
+        var rect = Rect(controller.transform, "Backup Dispense Access", 0, 0, 160, 120);
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1, 1);
+        var image = rect.gameObject.AddComponent<Image>();
+        image.color = Color.clear;
+        var button = rect.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
+        button.transition = Selectable.Transition.None;
+        button.navigation = new Navigation { mode = Navigation.Mode.None };
+        controller.backupDispenseButton = button;
+        // Keep the full operator panel above both hidden access areas.
+        controller.panel.transform.SetAsLastSibling();
+        return true;
     }
 
     static void Heading(Transform parent, string title, ref float y)

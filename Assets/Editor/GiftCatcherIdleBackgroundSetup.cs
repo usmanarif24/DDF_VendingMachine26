@@ -34,6 +34,8 @@ public static class GiftCatcherIdleBackgroundSetup
     {
         bool idleChanged = GiftCatcherIdleScreenSetup.Configure(game);
         bool instructionsChanged = GiftCatcherInstructionsSetup.Configure(game);
-        return idleChanged || instructionsChanged;
+        bool resultChanged = GiftCatcherResultSetup.Configure(game);
+        bool gameplayChanged = GiftCatcherGameplaySetup.Configure(game);
+        return idleChanged || instructionsChanged || resultChanged || gameplayChanged;
     }
 }
